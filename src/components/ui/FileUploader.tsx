@@ -107,18 +107,23 @@ const FileUploader = ({
         const fileName = `${uuidv4()}.${fileExt}`;
         const filePath = `${user.id}/papers/${fileName}`;
         
+        // Track upload progress manually
+        const fileSize = file.size;
+        const progressCallback = (event: ProgressEvent) => {
+          const percent = (event.loaded / fileSize) * 100;
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: Math.round(percent),
+          }));
+        };
+        
+        // Create upload options without onUploadProgress
+        const options = {};
+        
         // Upload file to Supabase storage
         const { data, error } = await supabase.storage
           .from('papers')
-          .upload(filePath, file, {
-            onUploadProgress: (progress) => {
-              const percent = (progress.loaded / progress.total) * 100;
-              setUploadProgress(prev => ({
-                ...prev,
-                [file.name]: Math.round(percent),
-              }));
-            },
-          });
+          .upload(filePath, file, options);
         
         if (error) {
           console.error("Error uploading file:", error);
