@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Menu, Plus, Bell, Settings, User } from 'lucide-react';
+import { Search, Menu, Plus, Bell, Settings, User, LogOut } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 interface NavbarProps {
   toggleSidebar: () => void;
@@ -20,6 +22,25 @@ interface NavbarProps {
 
 const Navbar = ({ toggleSidebar, isSidebarOpen }: NavbarProps) => {
   const [searchFocused, setSearchFocused] = useState(false);
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Signed out",
+        description: "You have been signed out successfully",
+      });
+    } catch (error) {
+      console.error("Error signing out:", error);
+      toast({
+        title: "Error",
+        description: "Failed to sign out",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -88,27 +109,31 @@ const Navbar = ({ toggleSidebar, isSidebarOpen }: NavbarProps) => {
             )}
           </div>
 
-          <Button 
-            size="icon" 
-            variant="ghost" 
-            className={cn("text-muted-foreground hover:text-foreground transition-opacity", 
-              searchFocused ? "opacity-0 md:opacity-100" : "opacity-100"
-            )}
-            aria-label="Create new document"
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
-          
-          <Button 
-            size="icon" 
-            variant="ghost" 
-            className={cn("text-muted-foreground hover:text-foreground transition-opacity", 
-              searchFocused ? "opacity-0 md:opacity-100" : "opacity-100"
-            )}
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5" />
-          </Button>
+          {user && (
+            <>
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                className={cn("text-muted-foreground hover:text-foreground transition-opacity", 
+                  searchFocused ? "opacity-0 md:opacity-100" : "opacity-100"
+                )}
+                aria-label="Create new document"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+              
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                className={cn("text-muted-foreground hover:text-foreground transition-opacity", 
+                  searchFocused ? "opacity-0 md:opacity-100" : "opacity-100"
+                )}
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+              </Button>
+            </>
+          )}
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -124,18 +149,34 @@ const Navbar = ({ toggleSidebar, isSidebarOpen }: NavbarProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="mr-2 h-4 w-4" />
-                <span>Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Log out</DropdownMenuItem>
+              {user ? (
+                <>
+                  <DropdownMenuLabel>
+                    {user.user_metadata?.name || user.email}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Sign out</span>
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem asChild>
+                  <a href="/">
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Sign in</span>
+                  </a>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

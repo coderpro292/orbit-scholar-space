@@ -30,9 +30,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AuthFormsProps {
   className?: string;
+  onSuccess?: () => void;
 }
 
 const loginSchema = z.object({
@@ -46,9 +48,11 @@ const registerSchema = z.object({
   password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
 });
 
-const AuthForms = ({ className }: AuthFormsProps) => {
+const AuthForms = ({ className, onSuccess }: AuthFormsProps) => {
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { signIn, signUp } = useAuth();
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -67,20 +71,70 @@ const AuthForms = ({ className }: AuthFormsProps) => {
     },
   });
 
-  const onLoginSubmit = (data: z.infer<typeof loginSchema>) => {
-    console.log('Login form data:', data);
-    toast({
-      title: 'Login Attempted',
-      description: 'This is a demo. No actual login is performed.',
-    });
+  const onLoginSubmit = async (data: z.infer<typeof loginSchema>) => {
+    try {
+      setIsLoading(true);
+      const { error } = await signIn(data.email, data.password);
+      
+      if (error) {
+        toast({
+          title: 'Login failed',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      toast({
+        title: 'Login successful',
+        description: 'Welcome back!',
+      });
+      
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (error) {
+      toast({
+        title: 'Login failed',
+        description: 'An unexpected error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const onRegisterSubmit = (data: z.infer<typeof registerSchema>) => {
-    console.log('Register form data:', data);
-    toast({
-      title: 'Registration Attempted',
-      description: 'This is a demo. No actual registration is performed.',
-    });
+  const onRegisterSubmit = async (data: z.infer<typeof registerSchema>) => {
+    try {
+      setIsLoading(true);
+      const { error } = await signUp(data.email, data.password, data.name);
+      
+      if (error) {
+        toast({
+          title: 'Registration failed',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      toast({
+        title: 'Registration successful',
+        description: 'Please check your email to verify your account',
+      });
+      
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (error) {
+      toast({
+        title: 'Registration failed',
+        description: 'An unexpected error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -156,8 +210,8 @@ const AuthForms = ({ className }: AuthFormsProps) => {
                     Forgot password?
                   </a>
                 </div>
-                <Button type="submit" className="w-full">
-                  Sign In
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </form>
             </Form>
@@ -237,8 +291,8 @@ const AuthForms = ({ className }: AuthFormsProps) => {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">
-                  Create Account
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Creating account...' : 'Create Account'}
                 </Button>
               </form>
             </Form>

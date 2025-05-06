@@ -3,22 +3,36 @@ import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, X, AlertCircle, FileText, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { useToast } from '@/hooks/use-toast';
+import { v4 as uuidv4 } from 'uuid';
 
 interface FileUploaderProps {
   onFilesSelected?: (files: File[]) => void;
+  onFileUploaded?: (filePath: string, fileData: {
+    title: string;
+    size: number;
+    type: string;
+    originalName: string;
+  }) => void;
   maxFiles?: number;
   className?: string;
 }
 
 const FileUploader = ({
   onFilesSelected,
+  onFileUploaded,
   maxFiles = 10,
   className,
 }: FileUploaderProps) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const { toast } = useToast();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files || event.target.files.length === 0) return;
@@ -70,15 +84,90 @@ const FileUploader = ({
     }
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (files.length === 0) return;
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to upload files",
+        variant: "destructive",
+      });
+      return;
+    }
     
     setUploadStatus('uploading');
+    let successCount = 0;
+    let errorCount = 0;
     
-    // Simulate upload process
-    setTimeout(() => {
-      setUploadStatus(Math.random() > 0.1 ? 'success' : 'error');
-    }, 2000);
+    // Process each file
+    for (const file of files) {
+      try {
+        // Create a unique file name
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${uuidv4()}.${fileExt}`;
+        const filePath = `${user.id}/papers/${fileName}`;
+        
+        // Upload file to Supabase storage
+        const { data, error } = await supabase.storage
+          .from('papers')
+          .upload(filePath, file, {
+            onUploadProgress: (progress) => {
+              const percent = (progress.loaded / progress.total) * 100;
+              setUploadProgress(prev => ({
+                ...prev,
+                [file.name]: Math.round(percent),
+              }));
+            },
+          });
+        
+        if (error) {
+          console.error("Error uploading file:", error);
+          errorCount++;
+          continue;
+        }
+        
+        // If upload was successful and callback is provided
+        if (data && onFileUploaded) {
+          onFileUploaded(data.path, {
+            title: file.name.split('.')[0],
+            size: file.size,
+            type: file.type,
+            originalName: file.name,
+          });
+        }
+        
+        successCount++;
+      } catch (error) {
+        console.error("Exception during upload:", error);
+        errorCount++;
+      }
+    }
+    
+    // Set final status
+    if (errorCount > 0) {
+      if (successCount > 0) {
+        toast({
+          title: "Partial upload success",
+          description: `${successCount} files uploaded, ${errorCount} failed`,
+          variant: "default",
+        });
+        setUploadStatus('success');
+      } else {
+        toast({
+          title: "Upload failed",
+          description: "All file uploads failed",
+          variant: "destructive",
+        });
+        setUploadStatus('error');
+      }
+    } else {
+      toast({
+        title: "Upload complete",
+        description: `Successfully uploaded ${successCount} files`,
+      });
+      setUploadStatus('success');
+      setFiles([]);
+    }
   };
 
   return (
@@ -137,6 +226,13 @@ const FileUploader = ({
                     </p>
                   </div>
                 </div>
+                
+                {uploadStatus === 'uploading' && uploadProgress[file.name] !== undefined && (
+                  <div className="w-16 text-xs text-right mr-2">
+                    {uploadProgress[file.name]}%
+                  </div>
+                )}
+                
                 <Button
                   variant="ghost"
                   size="icon"
@@ -145,6 +241,7 @@ const FileUploader = ({
                     e.stopPropagation();
                     removeFile(index);
                   }}
+                  disabled={uploadStatus === 'uploading'}
                 >
                   <X className="h-4 w-4" />
                   <span className="sr-only">Remove file</span>
@@ -160,6 +257,7 @@ const FileUploader = ({
                 e.stopPropagation();
                 setFiles([]);
               }}
+              disabled={uploadStatus === 'uploading'}
             >
               Clear All
             </Button>

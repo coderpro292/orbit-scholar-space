@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import Sidebar from '@/components/layout/Sidebar';
 import DocumentCard from '@/components/ui/DocumentCard';
@@ -17,8 +18,12 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ListFilter, Grid3X3, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { Document } from '@/lib/supabase';
+import { useToast } from '@/hooks/use-toast';
 
-// Sample data for documents
+// Sample data for documents (will be replaced with real data)
 const sampleDocuments = [
   {
     id: '1',
@@ -83,19 +88,67 @@ const sampleDocuments = [
 const Index = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [selectedDocument, setSelectedDocument] = useState<typeof sampleDocuments[0] | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { user, isLoading: authLoading } = useAuth();
+  const { toast } = useToast();
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
+  const { data: documents, isLoading, refetch } = useQuery({
+    queryKey: ['documents', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        throw error;
+      }
+      
+      return data || [];
+    },
+    enabled: !!user,
+  });
+  
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  const handleDocumentClick = (document: typeof sampleDocuments[0]) => {
+  const handleDocumentClick = async (document: Document) => {
     setSelectedDocument(document);
-    setIsPDFViewerOpen(true);
+    
+    // Get signed URL for the PDF file
+    if (document.file_path) {
+      try {
+        const { data, error } = await supabase.storage
+          .from('papers')
+          .createSignedUrl(document.file_path, 60); // URL valid for 60 seconds
+        
+        if (error) {
+          throw error;
+        }
+        
+        setPdfUrl(data.signedUrl);
+        setIsPDFViewerOpen(true);
+      } catch (error) {
+        console.error("Error getting signed URL:", error);
+        toast({
+          title: "Error",
+          description: "Could not load the PDF file",
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Fallback to sample PDF if no file path
+      setPdfUrl('/sample.pdf');
+      setIsPDFViewerOpen(true);
+    }
   };
 
   const openAuthDialog = () => {
@@ -103,16 +156,49 @@ const Index = () => {
   };
 
   const openUploadDialog = () => {
-    if (!isLoggedIn) {
+    if (!user) {
       openAuthDialog();
       return;
     }
     setShowUploadDialog(true);
   };
 
-  // For demo purposes only - toggle login state
-  const toggleLogin = () => {
-    setIsLoggedIn(!isLoggedIn);
+  const handleFileUploaded = async (filePath: string, fileData: {
+    title: string;
+    size: number;
+    type: string;
+    originalName: string;
+  }) => {
+    if (!user) return;
+    
+    try {
+      // Save document metadata to the database
+      const { error } = await supabase
+        .from('documents')
+        .insert({
+          title: fileData.title,
+          file_path: filePath,
+          user_id: user.id,
+          authors: [],  // Can be updated later
+          date: new Date().toISOString(),
+          tags: [],     // Can be updated later
+          favorite: false,
+        });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Refresh the documents list
+      refetch();
+    } catch (error) {
+      console.error("Error saving document metadata:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save document information",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -149,14 +235,15 @@ const Index = () => {
                     Upload Paper
                   </Button>
                   
-                  {/* For demo purposes only */}
-                  <Button 
-                    variant="outline" 
-                    onClick={toggleLogin}
-                    className="gap-2"
-                  >
-                    {isLoggedIn ? 'Demo: Logout' : 'Demo: Login'}
-                  </Button>
+                  {!user && !authLoading && (
+                    <Button 
+                      variant="outline" 
+                      onClick={openAuthDialog}
+                      className="gap-2"
+                    >
+                      Sign In
+                    </Button>
+                  )}
                 </div>
               </div>
               
@@ -174,31 +261,61 @@ const Index = () => {
                         ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" 
                         : "space-y-4"
                     )}>
-                      {sampleDocuments.map((doc) => (
-                        <DocumentCard
-                          key={doc.id}
-                          id={doc.id}
-                          title={doc.title}
-                          authors={doc.authors}
-                          date={doc.date}
-                          favorite={doc.favorite}
-                          tags={doc.tags}
-                          onClick={() => handleDocumentClick(doc)}
-                          className={viewMode === 'list' ? "sm:flex sm:items-center sm:gap-4" : ""}
-                        />
-                      ))}
+                      {isLoading ? (
+                        <div className="col-span-full flex justify-center py-12">
+                          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent" />
+                        </div>
+                      ) : documents && documents.length > 0 ? (
+                        documents.map((doc) => (
+                          <DocumentCard
+                            key={doc.id}
+                            id={doc.id}
+                            title={doc.title}
+                            authors={doc.authors}
+                            date={doc.date}
+                            favorite={doc.favorite}
+                            tags={doc.tags}
+                            onClick={() => handleDocumentClick(doc)}
+                            className={viewMode === 'list' ? "sm:flex sm:items-center sm:gap-4" : ""}
+                          />
+                        ))
+                      ) : user ? (
+                        <div className="col-span-full text-center py-12 text-muted-foreground">
+                          <p className="mb-4">No documents found. Upload your first paper!</p>
+                          <Button onClick={openUploadDialog}>Upload Paper</Button>
+                        </div>
+                      ) : (
+                        <div className="col-span-full text-center py-12 text-muted-foreground">
+                          <p className="mb-4">Sign in to view your papers</p>
+                          <Button onClick={openAuthDialog}>Sign In</Button>
+                        </div>
+                      )}
                     </div>
                   </TabsContent>
                   
                   <TabsContent value="recent" className="mt-0">
                     <div className="text-center py-8 text-muted-foreground">
-                      <p>This is a demo interface. Recent papers would appear here.</p>
+                      {user ? (
+                        <p>Your recently added papers will appear here.</p>
+                      ) : (
+                        <div>
+                          <p className="mb-4">Sign in to view your recent papers</p>
+                          <Button onClick={openAuthDialog}>Sign In</Button>
+                        </div>
+                      )}
                     </div>
                   </TabsContent>
                   
                   <TabsContent value="favorites" className="mt-0">
                     <div className="text-center py-8 text-muted-foreground">
-                      <p>This is a demo interface. Favorite papers would appear here.</p>
+                      {user ? (
+                        <p>Your favorite papers will appear here.</p>
+                      ) : (
+                        <div>
+                          <p className="mb-4">Sign in to view your favorite papers</p>
+                          <Button onClick={openAuthDialog}>Sign In</Button>
+                        </div>
+                      )}
                     </div>
                   </TabsContent>
                 </Tabs>
@@ -247,13 +364,13 @@ const Index = () => {
         open={isPDFViewerOpen}
         onOpenChange={setIsPDFViewerOpen}
         documentTitle={selectedDocument?.title}
-        documentUrl="/sample.pdf"
+        documentUrl={pdfUrl || '/sample.pdf'}
       />
       
       {/* Authentication Dialog */}
       <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
         <DialogContent className="sm:max-w-md p-0">
-          <AuthForms />
+          <AuthForms onSuccess={() => setShowAuthDialog(false)} />
         </DialogContent>
       </Dialog>
       
@@ -263,7 +380,7 @@ const Index = () => {
           <DialogHeader>
             <DialogTitle>Upload Papers</DialogTitle>
           </DialogHeader>
-          <FileUploader />
+          <FileUploader onFileUploaded={handleFileUploaded} />
         </DialogContent>
       </Dialog>
     </div>
