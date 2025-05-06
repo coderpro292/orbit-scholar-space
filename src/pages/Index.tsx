@@ -167,6 +167,40 @@ const Index = () => {
                     <TabsTrigger value="recent">Recent</TabsTrigger>
                     <TabsTrigger value="favorites">Favorites</TabsTrigger>
                   </TabsList>
+                
+                  <TabsContent value="all" className="mt-0">
+                    <div className={cn(
+                      viewMode === 'grid' 
+                        ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" 
+                        : "space-y-4"
+                    )}>
+                      {sampleDocuments.map((doc) => (
+                        <DocumentCard
+                          key={doc.id}
+                          id={doc.id}
+                          title={doc.title}
+                          authors={doc.authors}
+                          date={doc.date}
+                          favorite={doc.favorite}
+                          tags={doc.tags}
+                          onClick={() => handleDocumentClick(doc)}
+                          className={viewMode === 'list' ? "sm:flex sm:items-center sm:gap-4" : ""}
+                        />
+                      ))}
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="recent" className="mt-0">
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>This is a demo interface. Recent papers would appear here.</p>
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="favorites" className="mt-0">
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>This is a demo interface. Favorite papers would appear here.</p>
+                    </div>
+                  </TabsContent>
                 </Tabs>
                 
                 <div className="flex items-center gap-2">
@@ -203,40 +237,6 @@ const Index = () => {
                   </div>
                 </div>
               </div>
-              
-              <TabsContent value="all" className="mt-0">
-                <div className={cn(
-                  viewMode === 'grid' 
-                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" 
-                    : "space-y-4"
-                )}>
-                  {sampleDocuments.map((doc) => (
-                    <DocumentCard
-                      key={doc.id}
-                      id={doc.id}
-                      title={doc.title}
-                      authors={doc.authors}
-                      date={doc.date}
-                      favorite={doc.favorite}
-                      tags={doc.tags}
-                      onClick={() => handleDocumentClick(doc)}
-                      className={viewMode === 'list' ? "sm:flex sm:items-center sm:gap-4" : ""}
-                    />
-                  ))}
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="recent" className="mt-0">
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>This is a demo interface. Recent papers would appear here.</p>
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="favorites" className="mt-0">
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>This is a demo interface. Favorite papers would appear here.</p>
-                </div>
-              </TabsContent>
             </div>
           </div>
         </main>
